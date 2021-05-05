@@ -170,6 +170,9 @@ const OrderPlacement: React.FC<OrderPlacementProps> = (props) => {
   const [attemptingTxn, setAttemptingTxn] = useState<boolean>(false) // clicked confirmed
   const [pendingConfirmation, setPendingConfirmation] = useState<boolean>(true) // waiting for user confirmation
   const [txHash, setTxHash] = useState<string>('')
+  const [hasRiskNotCoveringClearingPrice, setHasRiskNotCoveringClearingPrice] = useState<boolean>(
+    false,
+  )
 
   const auctioningToken = React.useMemo(() => derivedAuctionInfo.auctioningToken, [
     derivedAuctionInfo.auctioningToken,
@@ -221,6 +224,33 @@ const OrderPlacement: React.FC<OrderPlacementProps> = (props) => {
     }
   }, [onUserPriceInput, price, derivedAuctionInfo, showPriceInverted])
 
+  useEffect(() => {
+    const coversClearingPrice = (price: string | undefined, lessThan: boolean): boolean => {
+      if (!price || price === '-') {
+        return false
+      }
+      const [intPart, decimalsPart = ''] = price.split('.')
+      const decimals = decimalsPart.length
+
+      // eslint-disable-next-line no-console
+      console.log('price: ', intPart)
+      const divisor = 10n ** BigInt(decimals)
+      const priceSanitized = BigInt(Number(intPart))
+      // eslint-disable-next-line no-console
+      console.log('decimals', divisor, 'priceSanitized', priceSanitized, 'less:', lessThan)
+      const fractionPrice = new Fraction(priceSanitized * divisor, divisor)
+
+      return lessThan
+        ? derivedAuctionInfo.clearingPrice.lessThan(fractionPrice)
+        : derivedAuctionInfo.clearingPrice.greaterThan(fractionPrice)
+    }
+
+    setHasRiskNotCoveringClearingPrice(
+      auctionState === AuctionState.ORDER_PLACING_AND_CANCELING &&
+        coversClearingPrice(price, showPriceInverted),
+    )
+  }, [price, derivedAuctionInfo, showPriceInverted, auctionState])
+
   const resetModal = () => {
     if (!pendingConfirmation) {
       onUserSellAmountInput('')
@@ -262,7 +292,6 @@ const OrderPlacement: React.FC<OrderPlacementProps> = (props) => {
   ])
   const notApproved = approval === ApprovalState.NOT_APPROVED || approval === ApprovalState.PENDING
   const orderPlacingOnly = auctionState === AuctionState.ORDER_PLACING
-
   const handleShowConfirm = () => {
     if (chainId !== chainIdFromWeb3) {
       setShowWarningWrongChainId(true)
@@ -437,6 +466,7 @@ const OrderPlacement: React.FC<OrderPlacementProps> = (props) => {
             cancelDate={cancelDate}
             chainId={chainId}
             confirmText={'Confirm'}
+            hasRiskNotCoveringClearingPrice={hasRiskNotCoveringClearingPrice}
             isPriceInverted={showPriceInverted}
             onPlaceOrder={onPlaceOrder}
             orderPlacingOnly={orderPlacingOnly}
